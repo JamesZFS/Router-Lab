@@ -18,7 +18,7 @@ static void printByte(uint8_t a)
  */
 bool validateIPChecksum(uint8_t *packet, size_t len) {
   // 1. zerolize cheksum area
-  uint32_t expected = (packet[10] << 8) + packet[11];
+  uint16_t expected = (packet[10] << 8) + packet[11];
   packet[10] = 0;
   packet[11] = 0;
   // get IP header length
