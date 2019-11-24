@@ -1,6 +1,21 @@
 #include "rip.h"
 #include <stdint.h>
 #include <stdlib.h>
+#include <cstdio>
+
+static void printByte(uint8_t a)
+{
+	auto b = (uint8_t *) (&a);  // low bit at right
+	for (int k = 7; k >= 0; --k) {
+		printf("%u", (bool) (*b & (1 << k)));
+	}
+}
+
+static void printPacket(const uint8_t *packet, uint32_t len) {
+  for (int i = 0; i < len; ++i)
+    printf("%.2x ", packet[i]);
+  printf("\n");
+}
 
 /*
   在头文件 rip.h 中定义了如下的结构体：
@@ -29,6 +44,8 @@
   需要注意这里的地址都是用 **大端序** 存储的，1.2.3.4 对应 0x04030201 。
 */
 
+#define MAKE_SURE(cond)  if (!(cond)) return false;
+
 /**
  * @brief 从接受到的 IP 包解析出 Rip 协议的数据
  * @param packet 接受到的 IP 包
@@ -44,8 +61,35 @@
  * Mask 的二进制是不是连续的 1 与连续的 0 组成等等。
  */
 bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output) {
-  // TODO:
-  return false;
+  const uint32_t ip_hlen = (packet[0] & 0b00001111) * 4;  // in byte
+  constexpr uint32_t udp_hlen = 8; // bytes
+  constexpr uint32_t ripentry_size = 20; // bytes
+  packet += ip_hlen + udp_hlen;  // skip ip head and udp head
+  const uint32_t ripentry_tot_size = (len - ip_hlen - udp_hlen - 4);
+  MAKE_SURE(ripentry_tot_size % ripentry_size == 0);
+  output->numEntries = ripentry_tot_size / ripentry_size; // infer number of entries
+  const uint8_t command = packet[0];
+  MAKE_SURE(command == 1 || command == 2) // check command
+  output->command = command;
+  MAKE_SURE(packet[1] == 2); // check version
+  MAKE_SURE(packet[2] == 0 && packet[3] == 0); // check zero
+  packet += 4; // skip RIPv2 header
+  for (auto i = 0; i < output->numEntries; ++i, packet += 20) {
+    // parse all RipEntries
+    RipEntry &e = output->entries[i];
+    MAKE_SURE(packet[0] == 0 && ((packet[1] == 2 && command == 2) || (packet[1] == 0 && command == 1))); // family
+    MAKE_SURE(packet[2] == 0 && packet[3] == 0); // tag
+    e.addr = packet[4] + (packet[5] << 8) + (packet[6] << 16) + (packet[7] << 24); // big
+    // printf("ip addr: %.8x\n", rip_entry.addr);
+    e.mask = packet[8] + (packet[9] << 8) + (packet[10] << 16) + (packet[11] << 24); // big
+    for (auto i = 8; i < 12; ++i) MAKE_SURE(packet[i] == 0xFF || packet[i] == 0x00);
+    // MAKE_SURE(e.mask != 0xFFFFFFFF && e.mask != 0x00000000);
+    e.nexthop = packet[12] + (packet[13] << 8) + (packet[14] << 16) + (packet[15] << 24); // big
+    uint32_t metric_little = (packet[16] << 24) + (packet[17] << 16) + (packet[18] << 8) + packet[19]; // little
+    MAKE_SURE((command == 1 && metric_little == 16) || (command == 2 && 1 <= metric_little && metric_little <= 16));
+    e.metric = packet[16] + (packet[17] << 8) + (packet[18] << 16) + (packet[19] << 24); // big
+  }
+  return true;
 }
 
 /**
@@ -59,6 +103,40 @@ bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output) {
  * 需要注意一些没有保存在 RipPacket 结构体内的数据的填写。
  */
 uint32_t assemble(const RipPacket *rip, uint8_t *buffer) {
-  // TODO:
-  return 0;
+  uint32_t p = 0;
+  // rip head
+  buffer[p++] = rip->command;
+  buffer[p++] = 2; // RIPv2 version
+  buffer[p++] = 0;
+  buffer[p++] = 0; // zero
+  for (uint32_t i = 0; i < rip->numEntries; ++i) {
+    const RipEntry &e = rip->entries[i];
+    // family
+    buffer[p++] = 0;
+    buffer[p++] = rip->command == 2 ? 2 : 0;
+    // tag
+    buffer[p++] = 0;
+    buffer[p++] = 0;
+    // ip
+    buffer[p++] = e.addr;
+    buffer[p++] = e.addr >> 8;
+    buffer[p++] = e.addr >> 16;
+    buffer[p++] = e.addr >> 24;
+    // mask
+    buffer[p++] = e.mask;
+    buffer[p++] = e.mask >> 8;
+    buffer[p++] = e.mask >> 16;
+    buffer[p++] = e.mask >> 24;
+    // hop
+    buffer[p++] = e.nexthop;
+    buffer[p++] = e.nexthop >> 8;
+    buffer[p++] = e.nexthop >> 16;
+    buffer[p++] = e.nexthop >> 24;
+    // metric
+    buffer[p++] = e.metric;
+    buffer[p++] = e.metric >> 8;
+    buffer[p++] = e.metric >> 16;
+    buffer[p++] = e.metric >> 24;
+  }
+  return p;
 }

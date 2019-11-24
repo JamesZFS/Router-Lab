@@ -27,10 +27,6 @@ bool validateIPChecksum(uint8_t *packet, size_t len) {
   uint32_t sum = 0;
   uint32_t overflow = 0;
   for (size_t i = 0; i < h_len; i += 2) { // step 2 uint_8s
-    // printByte(packet[i]);
-    // printf(" ");
-    // printByte(packet[i+1]);
-    // printf(" : %.2X %.2X \n", packet[i], packet[i+1]);
     sum += (packet[i] << 8) + packet[i+1];
     do {
       overflow = (sum & 0xFFFF0000) >> 16; // take hi 16 bits of sum
