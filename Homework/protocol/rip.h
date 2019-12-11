@@ -18,3 +18,5 @@ typedef struct {
   // we don't store 'zero', as it is always 0
   RipEntry entries[RIP_MAX_ENTRY];
 } RipPacket;
+
+const uint8_t CMD_REQUEST = 1, CMD_RESPONSE = 2;

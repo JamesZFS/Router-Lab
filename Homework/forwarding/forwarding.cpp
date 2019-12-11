@@ -10,7 +10,7 @@ static void printByte(uint8_t a)
 	}
 }
 
-static uint16_t valSum(const uint8_t *packet, size_t len) {
+uint16_t valSum(const uint8_t *packet, size_t len) {
   uint32_t sum = 0;
   uint32_t overflow = 0;
   for (size_t i = 0; i < len; i += 2) { // step 2 uint_8s

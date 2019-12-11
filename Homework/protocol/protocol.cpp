@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <cstdio>
+#include <cstring>
 
 static void printByte(uint8_t a)
 {
@@ -69,7 +70,7 @@ bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output) {
   MAKE_SURE(ripentry_tot_size % ripentry_size == 0);
   output->numEntries = ripentry_tot_size / ripentry_size; // infer number of entries
   const uint8_t command = packet[0];
-  MAKE_SURE(command == 1 || command == 2) // check command
+  MAKE_SURE(command == CMD_REQUEST || command == CMD_RESPONSE) // check command
   output->command = command;
   MAKE_SURE(packet[1] == 2); // check version
   MAKE_SURE(packet[2] == 0 && packet[3] == 0); // check zero
@@ -77,7 +78,7 @@ bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output) {
   for (auto i = 0; i < output->numEntries; ++i, packet += 20) {
     // parse all RipEntries
     RipEntry &e = output->entries[i];
-    MAKE_SURE(packet[0] == 0 && ((packet[1] == 2 && command == 2) || (packet[1] == 0 && command == 1))); // family
+    MAKE_SURE(packet[0] == 0 && ((packet[1] == 2 && command == CMD_RESPONSE) || (packet[1] == 0 && command == CMD_REQUEST))); // family
     MAKE_SURE(packet[2] == 0 && packet[3] == 0); // tag
     e.addr = packet[4] + (packet[5] << 8) + (packet[6] << 16) + (packet[7] << 24); // big
     // printf("ip addr: %.8x\n", rip_entry.addr);
@@ -86,7 +87,7 @@ bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output) {
     // MAKE_SURE(e.mask != 0xFFFFFFFF && e.mask != 0x00000000);
     e.nexthop = packet[12] + (packet[13] << 8) + (packet[14] << 16) + (packet[15] << 24); // big
     uint32_t metric_little = (packet[16] << 24) + (packet[17] << 16) + (packet[18] << 8) + packet[19]; // little
-    MAKE_SURE((command == 1 && metric_little == 16) || (command == 2 && 1 <= metric_little && metric_little <= 16));
+    MAKE_SURE((command == CMD_REQUEST && metric_little == 16) || (command == CMD_RESPONSE && 1 <= metric_little && metric_little <= 16));
     e.metric = packet[16] + (packet[17] << 8) + (packet[18] << 16) + (packet[19] << 24); // big
   }
   return true;
@@ -113,30 +114,22 @@ uint32_t assemble(const RipPacket *rip, uint8_t *buffer) {
     const RipEntry &e = rip->entries[i];
     // family
     buffer[p++] = 0;
-    buffer[p++] = rip->command == 2 ? 2 : 0;
+    buffer[p++] = rip->command == CMD_RESPONSE ? 2 : 0;
     // tag
     buffer[p++] = 0;
     buffer[p++] = 0;
     // ip
-    buffer[p++] = e.addr;
-    buffer[p++] = e.addr >> 8;
-    buffer[p++] = e.addr >> 16;
-    buffer[p++] = e.addr >> 24;
+    memcpy(&buffer[p], &e.addr, sizeof(e.addr));
+    p += 4;
     // mask
-    buffer[p++] = e.mask;
-    buffer[p++] = e.mask >> 8;
-    buffer[p++] = e.mask >> 16;
-    buffer[p++] = e.mask >> 24;
+    memcpy(&buffer[p], &e.mask, sizeof(e.mask));
+    p += 4;
     // hop
-    buffer[p++] = e.nexthop;
-    buffer[p++] = e.nexthop >> 8;
-    buffer[p++] = e.nexthop >> 16;
-    buffer[p++] = e.nexthop >> 24;
+    memcpy(&buffer[p], &e.nexthop, sizeof(e.nexthop));
+    p += 4;
     // metric
-    buffer[p++] = e.metric;
-    buffer[p++] = e.metric >> 8;
-    buffer[p++] = e.metric >> 16;
-    buffer[p++] = e.metric >> 24;
+    memcpy(&buffer[p], &e.metric, sizeof(e.metric));
+    p += 4;
   }
   return p;
 }

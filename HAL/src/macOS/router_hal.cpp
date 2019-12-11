@@ -24,7 +24,7 @@ const char *interfaces[N_IFACE_ON_BOARD] = {
     "en0",
     "en1",
     "en2",
-    "en3",
+    "bridge0",
 };
 
 bool inited = false;

@@ -18,7 +18,7 @@ uint8_t packet[2048];
 bool cont = false;
 
 // 10.0.0.1 ~ 10.0.3.1
-in_addr_t addrs[N_IFACE_ON_BOARD] = {0x0100000a, 0x0101000a, 0x0102000a,
+in_addr_t addrs[N_IFACE_ON_BOARD] = {0x9b01a8c0, 0x0101000a, 0x0102000a,
                                     0x0103000a};
 
 void interrupt(int _) {
@@ -98,7 +98,8 @@ int main() {
       macaddr_t dst_mac;
       int len = 64;
       for (int i = 0; i < len; i++) {
-        packet[i] = rand();
+        packet[i] = 0xff;
+        // packet[i] = rand();
       }
       for (int i = 0; i < sizeof(macaddr_t);i++) {
         dst_mac[i] = rand();
@@ -112,7 +113,7 @@ int main() {
     } else if (strncmp(buffer, "loop", strlen("loop")) == 0) {
       cont = true;
       while (getch() == ERR && cont) {
-        int mask = (1 << N_IFACE_ON_BOARD) - 1;
+        int mask = (1 << N_IFACE_ON_BOARD) - 1; // listen all
         macaddr_t src_mac;
         macaddr_t dst_mac;
         int if_index;
