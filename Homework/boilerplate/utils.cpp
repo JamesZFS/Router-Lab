@@ -28,7 +28,7 @@ RipEntry rtEntry2RipEntry(const RoutingTableEntry &e) {
     .addr = e.addr,
     .mask = (0x1u << e.len) - 1u, // caution!
     .nexthop = e.nexthop,
-    .metric = e.metric
+    .metric = endianSwap(e.metric)
   };
 }
 
@@ -49,7 +49,7 @@ RoutingTableEntry RipEntry2rtEntry(const RipEntry &e) {
     .len = countTrailingOne(e.mask),
     .if_index = 0,  // uninitialized
     .nexthop = e.nexthop,
-    .metric = (uint8_t)e.metric
+    .metric = (uint8_t)endianSwap(e.metric)
   };
 }
 
@@ -79,8 +79,11 @@ uint32_t writeIpUdpHead(uint8_t *buffer, uint32_t body_len, uint32_t src_addr, u
   buffer[10] = (uint8_t)(checksum >> 8), buffer[11] = (uint8_t)checksum; // checksum
   // UDP
   // port = 520
-  buffer[20] = 0x02;
-  buffer[21] = 0x08;
+  buffer[20] = 0x02, buffer[21] = 0x08; // src 520
+  buffer[22] = 0x02, buffer[23] = 0x08; // dst 520
+  buffer[24] = (uint8_t)((8 + body_len)>>8), buffer[25] = (uint8_t)(8 + body_len); // length
+  checksum = valSum(&buffer[20], 8);
+  buffer[26] = (uint8_t)(checksum >> 8), buffer[27] = (uint8_t)checksum; // checksum
   
   return tot_len;
 }

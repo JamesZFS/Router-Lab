@@ -26,7 +26,7 @@ uint8_t output[2048];
 // 2: 10.0.2.1  (not used)
 // 3: 10.0.3.1  (not used)
 // 你可以按需进行修改，注意端序
-in_addr_t addrs[N_IFACE_ON_BOARD] = {0x0100000a, 0x0101000a, 0x0102000a, 0x0103000a};
+in_addr_t addrs[N_IFACE_ON_BOARD] = {0x0100000a, 0x0101000a}; //, 0x0102000a, 0x0103000a};
 // 组播地址： 224.0.0.9
 const in_addr_t MULTICAST_ADDR = 0x90000e0;
 
@@ -44,7 +44,7 @@ int main(int argc, char *argv[]) {
       .len = 24,
       .if_index = i,
       .nexthop = 0, // means direct
-      .metric = 1 // 0 or 1 ?
+      .metric = 1
     };
     update(true, entry);
   }
@@ -179,7 +179,8 @@ int main(int argc, char *argv[]) {
           bool did_update_rt = false;
           for (int i = 0; i < rip.numEntries; ++i) {
             const RipEntry &rpe = rip.entries[i];
-            if (rpe.metric + 1 > 16) {
+            uint8_t metric = (uint8_t)endianSwap(rpe.metric);
+            if (metric + 1 > 16) {
               // deleting this route entry
               printf("deleting route entry\n");
               did_update_rt = true;
@@ -211,12 +212,12 @@ int main(int argc, char *argv[]) {
                 update(true, rte);
               } else {
                 // found the same route
-                if (rpe.metric + 1 <= where->metric) {
+                if (metric + 1 <= where->metric) {
                   // update
                   did_update_rt = true;
                   where->if_index = if_index;
                   where->nexthop = rpe.nexthop;
-                  where->metric = rpe.metric + 1;
+                  where->metric = metric + 1;
                   // wait until next periodical multicast
                   // TODO: or incrementally multicast now
                 }
