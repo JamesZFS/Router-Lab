@@ -68,6 +68,7 @@ int main(int argc, char *argv[]) {
         rip.numEntries = std::min(entries_to_send, (uint32_t)RIP_MAX_ENTRY);
         rip.command = CMD_RESPONSE;
         for (int i = 0; i < rip.numEntries; ++i) {
+          // if masked(nexthop) == masked(addrs[if_index]), continue
           rip.entries[i] = rtEntry2RipEntry(routing_table.at(idx_in_rt + i)); // TODO use [i]
         }
         // assemble rip packet
