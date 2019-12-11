@@ -1,12 +1,11 @@
-#include "router_hal.h"
-#include "rip.h"
-#include "router.h"
 #include "utils.h"
-#include <stdint.h>
+#include "router_hal.h"
+#include "router.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <vector>
 
 static uint16_t valSum(const uint8_t *packet, size_t len) {
   uint32_t sum = 0;
@@ -33,12 +32,26 @@ RipEntry rtEntry2RipEntry(const RoutingTableEntry &e) {
   };
 }
 
-// RoutingTableEntry RipEntry2rtEntry(const RipEntry &e) {
-//   return RoutingTableEntry{
-//     .addr = e.addr,
-//     .
-//   }
-// }
+static uint32_t countTrailingOne(uint32_t a) {
+  uint32_t len;
+  for (len = 0; len < 32; ++len) {
+    if ((a & 0x01) == 0) {
+      break;
+    }
+    a >>= 1;
+  }
+  return len;
+}
+
+RoutingTableEntry RipEntry2rtEntry(const RipEntry &e) {
+  return RoutingTableEntry{
+    .addr = e.addr,
+    .len = countTrailingOne(e.mask),
+    .if_index = 0,  // uninitialized
+    .nexthop = e.nexthop,
+    .metric = (uint8_t)e.metric
+  };
+}
 
 uint32_t endianSwap(uint32_t a) {
   return (a >> 24) | ((a & 0x00FF0000) >> 8) | ((a & 0x0000FF00) << 8) | ((a & 0x000000FF) << 24);
@@ -71,3 +84,22 @@ uint32_t writeIpUdpHead(uint8_t *buffer, uint32_t body_len, uint32_t src_addr, u
   
   return tot_len;
 }
+
+extern std::vector<RoutingTableEntry> routing_table;
+
+void printRoutingTable() {
+  printf("=== current routing table ===\n");
+  for (const RoutingTableEntry &e : routing_table) {
+    printf("\tip: %u.%u.%u.%u/%u  ", (uint8_t)e.addr, (uint8_t)(e.addr>>8), (uint8_t)(e.addr>>16), (uint8_t)(e.addr>>24), e.len);
+    printf("if: %u  ", e.if_index);
+    printf("nexthop: %u.%u.%u.%u  ", (uint8_t)e.nexthop, (uint8_t)(e.nexthop>>8), (uint8_t)(e.nexthop>>16), (uint8_t)(e.nexthop>>24));
+    printf("metric: %u\n", e.metric);
+  }
+}
+
+// // return length of icmp body
+// uint32_t writeIcmpTllE(uint8_t *buffer) { // Tll exceed
+//     buffer[0] = 11; // type
+//     buffer[1] = 0; // code
+//     // valSum
+// }

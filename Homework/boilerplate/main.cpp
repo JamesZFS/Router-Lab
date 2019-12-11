@@ -7,9 +7,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <algorithm>
 #include <vector>
-#define  N_NODE
-#define  N_NEIGHBOR
 
 extern bool validateIPChecksum(uint8_t *packet, size_t len);
 extern uint16_t valSum(const uint8_t *packet, size_t len);
@@ -57,7 +56,7 @@ int main(int argc, char *argv[]) {
     if (time > last_time + 30 * 1000) {
       // 每 30s 做什么
       // 例如：超时？发 RIP Request/Response
-      printf("Timer\n");
+      printf("\033[33mTimer Event\033[0m\n");
       last_time = time;
 
       // multicast response to all neighbors:
@@ -87,6 +86,7 @@ int main(int argc, char *argv[]) {
         idx_in_rt += rip.numEntries;
       } while (idx_in_rt < routing_table.size()); // possibly send multiple times
       printf("multicast done.\n");
+      printRoutingTable();
     }
 
     int mask = (1 << N_IFACE_ON_BOARD) - 1; // listen for all interfaces
@@ -110,8 +110,9 @@ int main(int argc, char *argv[]) {
       continue;
     }
     // res > 0: ok
-
-    if (!validateIPChecksum(packet, res)) {
+    auto packet_len = res;
+    // 1. 检查是否是合法的 IP 包，可以用你编写的 validateIPChecksum 函数，还需要一些额外的检查
+    if (!validateIPChecksum(packet, packet_len)) {
       printf("Invalid IP Checksum\n");
       continue;
     }
@@ -119,7 +120,11 @@ int main(int argc, char *argv[]) {
     // extract src_addr and dst_addr from packet
     src_addr = packet[12] + (packet[13] << 8) + (packet[14] << 16) + (packet[15] << 24); // big
     dst_addr = packet[16] + (packet[17] << 8) + (packet[18] << 16) + (packet[19] << 24); // big
+    printf("\033[32mlearned an IP packet, src: %u.%u.%u.%u  dst: %u.%u.%u.%u\n\033[0m", 
+          packet[12], packet[13], packet[14], packet[15], 
+          packet[16], packet[17], packet[18], packet[19]);
 
+    // 2. 检查目的地址，如果是路由器自己的 IP（或者是 RIP 的组播地址），进入 3a；否则进入 3b
     bool dst_is_me = false;
     for (int i = 0; i < N_IFACE_ON_BOARD;i++) {
       if (memcmp(&dst_addr, &addrs[i], sizeof(in_addr_t)) == 0) {
@@ -129,15 +134,19 @@ int main(int argc, char *argv[]) {
     }
     // Handle rip multicast address?
     if (dst_addr == MULTICAST_ADDR) {
+      printf("received multicast!\n");
       dst_is_me = true;
     }
 
-    if (dst_is_me) {
-      // TODO: RIP?
+    if (dst_is_me) { // 3a
+      printf("dst is me\n");
       RipPacket rip;
-      if (disassemble(packet, res, &rip)) {
+      // is this packet a RIP?
+      if (disassemble(packet, packet_len, &rip)) {
         if (rip.command == CMD_REQUEST) {
-          // responde to request
+          // 3a.3 如果是 Request 包，就遍历本地的路由表，构造出一个 RipPacket 结构体，
+          //      然后调用你编写的 assemble 函数，另外再把 IP 和 UDP 头补充在前面，
+          //      通过 HAL_SendIPPacket 发回询问的网口
           RipPacket resp;
           // fill resp with all route entries
           int idx_in_rt = 0;
@@ -159,35 +168,113 @@ int main(int argc, char *argv[]) {
             idx_in_rt += resp.numEntries;
           } while (idx_in_rt < routing_table.size()); // possibly send multiple times
         } else {
-          // response
+          // 3a.2 如果是 Response 包，就调用你编写的 query 和 update 函数进行查询和更新，
+          //      注意此时的 RoutingTableEntry 可能要添加新的字段（如metric、timestamp），
+          //      如果有路由更新的情况，可能需要构造出 RipPacket 结构体，调用你编写的 assemble 函数，
+          //      再把 IP 和 UDP 头补充在前面，通过 HAL_SendIPPacket 把它发到别的网口上
           // TODO: use query and update
-        }
-      } else {
-        // forward
-        // beware of endianness
-        uint32_t nexthop, dest_if;
-        if (query(src_addr, &nexthop, &dest_if)) {
-          // found
-          macaddr_t dest_mac;
-          // direct routing
-          if (nexthop == 0) {
-            nexthop = dst_addr;
+
+          printf("got response packet\n");
+          bool did_update_rt = false;
+          for (int i = 0; i < rip.numEntries; ++i) {
+            const RipEntry &rpe = rip.entries[i];
+            if (rpe.metric + 1 > 16) {
+              // deleting this route entry
+              printf("deleting route entry\n");
+              did_update_rt = true;
+              update(false, RipEntry2rtEntry(rpe));
+              RipPacket resp; // construct expire packet
+              resp.command = CMD_RESPONSE;
+              resp.numEntries = 1;
+              resp.entries[0] = rpe;
+              auto rip_len = assemble(&resp, &output[20 + 8]);
+              // multicast expire packet to all if except in_if
+              for (int out_if = 0; out_if < N_IFACE_ON_BOARD; ++out_if) {
+                if (out_if == if_index) continue; // avoid sending back
+                auto tot_len = writeIpUdpHead(output, rip_len, addrs[out_if], MULTICAST_ADDR);
+                macaddr_t multicast_mac;
+                res = HAL_ArpGetMacAddress(out_if, MULTICAST_ADDR, multicast_mac);
+                assert(res == 0);
+                res = HAL_SendIPPacket(out_if, output, tot_len, multicast_mac);
+                assert(res == 0);
+                printf("expire packet sent to %d\n", out_if);
+              }
+            } else {
+              // insert
+              RoutingTableEntry rte = RipEntry2rtEntry(rpe);
+              auto match = [&rte](const RoutingTableEntry &x) { return x.addr == rte.addr && x.len == rte.len; };
+              auto where = std::find_if(routing_table.begin(), routing_table.end(), match);
+              if (where == routing_table.end()) {
+                // not found, insert
+                did_update_rt = true;
+                update(true, rte);
+              } else {
+                // found the same route
+                if (rpe.metric + 1 <= where->metric) {
+                  // update
+                  did_update_rt = true;
+                  where->if_index = if_index;
+                  where->nexthop = rpe.nexthop;
+                  where->metric = rpe.metric + 1;
+                  // wait until next periodical multicast
+                  // TODO: or incrementally multicast now
+                }
+                // else: no op
+              }
+            }
           }
-          if (HAL_ArpGetMacAddress(dest_if, nexthop, dest_mac) == 0) {
-            // found
-            memcpy(output, packet, res);
-            // update ttl and checksum
-            forward(output, res);
-            // TODO: you might want to check ttl=0 case
-            HAL_SendIPPacket(dest_if, output, res, dest_mac);
+          if (did_update_rt) {
+            printf("\033[34mupdated routing table\033[0m\n");
+            printRoutingTable();
+          }
+        }
+      } else { // if not a valid rip, ignore
+        printf("not a valid rip\n");
+      }
+    } else {
+      printf("forwarding\n");
+      // 3b.1 此时目的 IP 地址不是路由器本身，则调用你编写的 query 函数查询，
+      //      如果查到目的地址，如果是直连路由， nexthop 改为目的 IP 地址，
+      //      用 HAL_ArpGetMacAddress 获取 nexthop 的 MAC 地址，
+      // beware of endianness
+      uint32_t nexthop, dest_if;
+      if (query(dst_addr, &nexthop, &dest_if)) {
+        // found
+        macaddr_t dest_mac;
+        // direct routing
+        if (nexthop == 0) {
+          nexthop = dst_addr;
+        }
+        if (HAL_ArpGetMacAddress(dest_if, nexthop, dest_mac) == 0) {
+          // 如果找到了，就调用你编写的 forward 函数进行 TTL 和 Checksum 的更新，
+          // 通过 HAL_SendIPPacket 发到指定的网口，
+          // 在 TTL 减到 0 的时候建议构造一个 ICMP Time Exceeded 返回给发送者；
+          memcpy(output, packet, packet_len);
+          // update ttl and checksum
+          if (!forward(output, packet_len)) {
+            printf("forwarding checksum failed.");
+            break;
+          }
+          if (packet[8] == 0) { // if ttl == 0
+            // TODO: send a ICMP Time Exceeded to sender
+            printf("ICMP TllE\n");
           } else {
-            // not found
+            res = HAL_SendIPPacket(dest_if, output, packet_len, dest_mac);
+            assert(res == 0);
+            printf("forwarded.");
           }
         } else {
-          // not found
+          // 如果没查到下一跳的 MAC 地址，HAL 会自动发出 ARP 请求，在对方回复后，下次转发时就知道了
         }
-      }
-    }
-  }
+      } else {
+        // TODO not found
+        // 如果没查到目的地址的路由，建议返回一个 ICMP Destination Network Unreachable；
+        printf("ICMP Destination Network Unreachable\n");
+      } // query
+
+    } // if dst_is_me
+
+  } // while 1
+
   return 0;
-}
+} // main

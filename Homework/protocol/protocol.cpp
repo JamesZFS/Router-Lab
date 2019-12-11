@@ -72,7 +72,7 @@ bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output) {
   const uint8_t command = packet[0];
   MAKE_SURE(command == CMD_REQUEST || command == CMD_RESPONSE) // check command
   output->command = command;
-  MAKE_SURE(packet[1] == 2); // check version
+  MAKE_SURE(packet[1] == RIP_V2); // check version
   MAKE_SURE(packet[2] == 0 && packet[3] == 0); // check zero
   packet += 4; // skip RIPv2 header
   for (auto i = 0; i < output->numEntries; ++i, packet += 20) {

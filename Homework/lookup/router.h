@@ -1,3 +1,6 @@
+#ifndef _ROUTER_H
+#define _ROUTER_H
+
 #include <stdint.h>
 typedef struct {
     uint32_t addr;
@@ -6,3 +9,5 @@ typedef struct {
     uint32_t nexthop;
     uint8_t  metric; // [0..16]
 } RoutingTableEntry;
+
+#endif

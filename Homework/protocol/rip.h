@@ -1,5 +1,11 @@
+#ifndef _RIP_H
+#define _RIP_H
+
 #include <stdint.h>
 #define RIP_MAX_ENTRY 25
+#define CMD_REQUEST  1 
+#define CMD_RESPONSE 2
+#define RIP_V2       2
 typedef struct {
   // all fields are big endian
   // we don't store 'family', as it is always 2(response) and 0(request)
@@ -19,4 +25,4 @@ typedef struct {
   RipEntry entries[RIP_MAX_ENTRY];
 } RipPacket;
 
-const uint8_t CMD_REQUEST = 1, CMD_RESPONSE = 2;
+#endif
