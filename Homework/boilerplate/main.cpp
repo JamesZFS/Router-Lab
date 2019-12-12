@@ -202,7 +202,7 @@ int main(int argc, char *argv[]) {
               auto rte = RipEntry2rtEntry(rpe);
               auto where = find(rte);
               if (where == routing_table.end()) {
-                printf("\033[31m Fail to delete in routing table, the entry is not found.\033[0m");
+                printf("Fail to delete in routing table, the entry is not found.");
                 printf("ip: %u.%u.%u.%u/%u \n", (uint8_t)rte.addr, (uint8_t)(rte.addr>>8), (uint8_t)(rte.addr>>16), (uint8_t)(rte.addr>>24), rte.len);
                 continue;
               }
@@ -233,20 +233,19 @@ int main(int argc, char *argv[]) {
               // insert
               RoutingTableEntry rte = RipEntry2rtEntry(rpe);
               rte.nexthop = src_addr;
+              rte.if_index = if_index;
               rte.metric += 1;
               auto where = find(rte);
               if (where == routing_table.end()) {
                 // not found, insert
                 did_update_rt = true;
-                update(true, rte);
+                routing_table.push_back(rte);
               } else {
                 // found the same route
                 if (metric + 1 <= where->metric) {
                   // update
                   did_update_rt = true;
-                  where->if_index = if_index;
-                  where->nexthop = src_addr;
-                  where->metric = metric + 1;
+                  *where = rte;
                   // wait until next periodical multicast
                   // TODO: or incrementally multicast now
                 }

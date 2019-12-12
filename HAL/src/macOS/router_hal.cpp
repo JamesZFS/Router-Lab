@@ -23,8 +23,8 @@ const int IP_OFFSET = 14;
 const char *interfaces[N_IFACE_ON_BOARD] = {
     "en0",
     "en1",
-    "en2",
-    "bridge0",
+    // "en2",
+    // "bridge0",
 };
 
 bool inited = false;
