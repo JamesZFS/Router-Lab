@@ -44,9 +44,18 @@ void update(bool insert, RoutingTableEntry entry) {
   }
   else {
     auto it = std::find_if(routing_table.begin(), routing_table.end(), match);
-    // assert(it != routing_table.end());
+    if (it == routing_table.end()) {
+      printf("\033[31m Fail to delete in routing table, the entry is not found.\033[0m");
+      printf("ip: %u.%u.%u.%u/%u \n", (uint8_t)entry.addr, (uint8_t)(entry.addr>>8), (uint8_t)(entry.addr>>16), (uint8_t)(entry.addr>>24), entry.len);
+      return;
+    }
     routing_table.erase(it);
   }
+}
+
+std::vector<RoutingTableEntry>::iterator find(const RoutingTableEntry &entry) {
+  auto match = [&entry](const RoutingTableEntry &x) { return x.addr == entry.addr && x.len == entry.len; };
+  return std::find_if(routing_table.begin(), routing_table.end(), match);
 }
 
 /**

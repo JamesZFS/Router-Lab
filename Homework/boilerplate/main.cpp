@@ -8,7 +8,7 @@
 #include <string.h>
 #include <assert.h>
 #include <algorithm>
-#include <vector>
+#include <vector> 
 
 extern bool validateIPChecksum(uint8_t *packet, size_t len);
 extern uint16_t valSum(const uint8_t *packet, size_t len);
@@ -17,6 +17,7 @@ extern bool query(uint32_t addr, uint32_t *nexthop, uint32_t *if_index);
 extern bool forward(uint8_t *packet, size_t len);
 extern bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output);
 extern uint32_t assemble(const RipPacket *rip, uint8_t *buffer);
+extern std::vector<RoutingTableEntry>::iterator find(const RoutingTableEntry &entry);
 extern std::vector<RoutingTableEntry> routing_table;
 
 uint8_t packet[2048];
@@ -26,7 +27,7 @@ uint8_t output[2048];
 // 2: 10.0.2.1  (not used)
 // 3: 10.0.3.1  (not used)
 // 你可以按需进行修改，注意端序
-in_addr_t addrs[N_IFACE_ON_BOARD] = {0x0100000a, 0x0101000a}; //, 0x0102000a, 0x0103000a};
+in_addr_t addrs[N_IFACE_ON_BOARD] = {0x0203a8c0, 0x0104a8c0}; //, 0x0102000a, 0x0103000a};
 // 组播地址： 224.0.0.9
 const in_addr_t MULTICAST_ADDR = 0x90000e0;
 
@@ -40,7 +41,7 @@ int main(int argc, char *argv[]) {
   // 0b. 创建若干条 /24 直连路由
   for (uint32_t i = 0; i < N_IFACE_ON_BOARD; i++) {
     RoutingTableEntry entry = {
-      .addr = addrs[i],
+      .addr = addrs[i] & 0x00ffffff,
       .len = 24,
       .if_index = i,
       .nexthop = 0, // means direct
@@ -53,7 +54,7 @@ int main(int argc, char *argv[]) {
   while (1) {
     // 获取当前时间，处理定时任务
     uint64_t time = HAL_GetTicks();
-    if (time > last_time + 30 * 1000) {
+    if (time > last_time + 5 * 1000) {
       // 每 30s 做什么
       // 例如：超时？发 RIP Request/Response
       printf("\033[33mTimer Event\033[0m\n");
@@ -61,31 +62,35 @@ int main(int argc, char *argv[]) {
 
       // multicast response to all neighbors:
       RipPacket rip;
-      // fill resp with all route entries:
-      int idx_in_rt = 0;
-      do {
-        uint32_t entries_to_send = routing_table.size() - idx_in_rt;
-        rip.numEntries = std::min(entries_to_send, (uint32_t)RIP_MAX_ENTRY);
-        rip.command = CMD_RESPONSE;
-        for (int i = 0; i < rip.numEntries; ++i) {
-          // if masked(nexthop) == masked(addrs[if_index]), continue
-          rip.entries[i] = rtEntry2RipEntry(routing_table.at(idx_in_rt + i)); // TODO use [i]
-        }
-        // assemble rip packet
-        uint32_t rip_len = assemble(&rip, &output[20 + 8]);
-        // multicast through all ifs
-        for (int if_index = 0; if_index < N_IFACE_ON_BOARD; ++if_index) {
+      for (int if_index = 0; if_index < N_IFACE_ON_BOARD; ++if_index) {
+        // fill resp with all route entries:
+        int idx_in_rt = 0;
+        do {
+          rip.command = CMD_RESPONSE;
+          uint32_t entries_to_send = routing_table.size() - idx_in_rt;
+          entries_to_send = std::min(entries_to_send, (uint32_t)RIP_MAX_ENTRY);
+          rip.numEntries = 0;
+          for (int i = 0; i < entries_to_send; ++i) {
+            const RoutingTableEntry &rte = routing_table.at(idx_in_rt + i);
+            if (rte.if_index == if_index) continue; // TODO nexthop | addr
+            rip.entries[rip.numEntries++] = rtEntry2RipEntry(rte);
+          }
+          // assemble rip packet
+          uint32_t rip_len = assemble(&rip, &output[20 + 8]);
+          // multicast through all ifs
+          
           // assemble ip & udp head
           uint32_t tot_len = writeIpUdpHead(output, rip_len, addrs[if_index], MULTICAST_ADDR);
           macaddr_t multicast_mac;
           res = HAL_ArpGetMacAddress(if_index, MULTICAST_ADDR, multicast_mac);
           assert(res == 0);
           res = HAL_SendIPPacket(if_index, output, tot_len, multicast_mac);
-          printf("ifid = %u, res = %d\n", if_index, res);
+          printf("if_id = %u, res = %d, idx_in_rt = %d\n", if_index, res, idx_in_rt);
           assert(res == 0);
-        }
-        idx_in_rt += rip.numEntries;
-      } while (idx_in_rt < routing_table.size()); // possibly send multiple times
+          
+          idx_in_rt += entries_to_send;
+        } while (idx_in_rt < routing_table.size()); // possibly send multiple times
+      } // for if_index
       printf("multicast done.\n");
       printRoutingTable();
     }
@@ -173,7 +178,7 @@ int main(int argc, char *argv[]) {
           //      注意此时的 RoutingTableEntry 可能要添加新的字段（如metric、timestamp），
           //      如果有路由更新的情况，可能需要构造出 RipPacket 结构体，调用你编写的 assemble 函数，
           //      再把 IP 和 UDP 头补充在前面，通过 HAL_SendIPPacket 把它发到别的网口上
-          // TODO: use query and update
+          // use query and update
 
           printf("got response packet\n");
           bool did_update_rt = false;
@@ -181,10 +186,33 @@ int main(int argc, char *argv[]) {
             const RipEntry &rpe = rip.entries[i];
             uint8_t metric = (uint8_t)endianSwap(rpe.metric);
             if (metric + 1 > 16) {
-              // deleting this route entry
+              // deleting this route entry ?
+              bool is_direct = false;
+              for (int i = 0; i < N_IFACE_ON_BOARD; ++i) {
+                if ((rpe.addr & rpe.mask) == (addrs[i] & 0x00ffffff)) {
+                  is_direct = true;
+                  break;
+                }
+              }
+              if (is_direct) {
+                printf("protect direct routing\n");
+                continue; // protect direct routing
+              }
+              // if (if_index != TODO
+              auto rte = RipEntry2rtEntry(rpe);
+              auto where = find(rte);
+              if (where == routing_table.end()) {
+                printf("\033[31m Fail to delete in routing table, the entry is not found.\033[0m");
+                printf("ip: %u.%u.%u.%u/%u \n", (uint8_t)rte.addr, (uint8_t)(rte.addr>>8), (uint8_t)(rte.addr>>16), (uint8_t)(rte.addr>>24), rte.len);
+                continue;
+              }
+              if (where->if_index != if_index) {
+                printf("protect route entry for if_index not match\n");
+                continue;
+              }
               printf("deleting route entry\n");
               did_update_rt = true;
-              update(false, RipEntry2rtEntry(rpe));
+              routing_table.erase(where);
               RipPacket resp; // construct expire packet
               resp.command = CMD_RESPONSE;
               resp.numEntries = 1;
@@ -204,8 +232,9 @@ int main(int argc, char *argv[]) {
             } else {
               // insert
               RoutingTableEntry rte = RipEntry2rtEntry(rpe);
-              auto match = [&rte](const RoutingTableEntry &x) { return x.addr == rte.addr && x.len == rte.len; };
-              auto where = std::find_if(routing_table.begin(), routing_table.end(), match);
+              rte.nexthop = src_addr;
+              rte.metric += 1;
+              auto where = find(rte);
               if (where == routing_table.end()) {
                 // not found, insert
                 did_update_rt = true;
@@ -216,7 +245,7 @@ int main(int argc, char *argv[]) {
                   // update
                   did_update_rt = true;
                   where->if_index = if_index;
-                  where->nexthop = rpe.nexthop;
+                  where->nexthop = src_addr;
                   where->metric = metric + 1;
                   // wait until next periodical multicast
                   // TODO: or incrementally multicast now
@@ -226,8 +255,9 @@ int main(int argc, char *argv[]) {
             }
           }
           if (did_update_rt) {
-            printf("\033[34mupdated routing table\033[0m\n");
+            printf("\033[34mupdated routing table\n");
             printRoutingTable();
+            printf("\033[0m");
           }
         }
       } else { // if not a valid rip, ignore

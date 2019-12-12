@@ -35,6 +35,8 @@ bool validateIPChecksum(uint8_t *packet, size_t len) {
     } while (overflow != 0);
   }
   sum = ~sum & 0x0000FFFF; // logical not
+  packet[10] = (uint8_t)(expected >> 8);
+  packet[11] = (uint8_t)(expected);
 
   return sum == expected;
 }

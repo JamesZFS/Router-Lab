@@ -72,7 +72,7 @@ uint32_t writeIpUdpHead(uint8_t *buffer, uint32_t body_len, uint32_t src_addr, u
   buffer[6] = 0x40, buffer[7] = 0; // fragment
   buffer[8] = 1; // TTL
   buffer[9] = 0x11; // protocol: udp
-  // buffer[10], buffer[11]: checksum
+  buffer[10] = 0, buffer[11] = 0; // checksum
   memcpy(&buffer[12], &src_addr, sizeof(src_addr)); // src ip
   memcpy(&buffer[16], &dst_addr, sizeof(dst_addr)); // dst_ip
   uint16_t checksum = valSum(buffer, 20);
@@ -82,8 +82,9 @@ uint32_t writeIpUdpHead(uint8_t *buffer, uint32_t body_len, uint32_t src_addr, u
   buffer[20] = 0x02, buffer[21] = 0x08; // src 520
   buffer[22] = 0x02, buffer[23] = 0x08; // dst 520
   buffer[24] = (uint8_t)((8 + body_len)>>8), buffer[25] = (uint8_t)(8 + body_len); // length
-  checksum = valSum(&buffer[20], 8);
-  buffer[26] = (uint8_t)(checksum >> 8), buffer[27] = (uint8_t)checksum; // checksum
+  // checksum = valSum(&buffer[20], 8);
+  // buffer[26] = (uint8_t)(checksum >> 8), buffer[27] = (uint8_t)checksum; // checksum
+  buffer[26] = 0, buffer[27] = 0; // checksum
   
   return tot_len;
 }
