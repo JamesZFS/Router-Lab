@@ -47,6 +47,23 @@ static void printPacket(const uint8_t *packet, uint32_t len) {
 
 #define MAKE_SURE(cond)  if (!(cond)) return false;
 
+static bool checkMask(uint32_t mask) {
+  uint32_t i = 0;
+  while (i < 32 && !(mask & 1)) {
+    mask >>= 1;
+    i++;
+  }
+  while (i++ < 32) {
+    if (!(mask & 1)) return false;
+    mask >>= 1;
+  }
+  return true;
+}
+
+static uint32_t endianSwap(uint32_t a) {
+  return (a >> 24) | ((a & 0x00FF0000) >> 8) | ((a & 0x0000FF00) << 8) | ((a & 0x000000FF) << 24);
+}
+
 /**
  * @brief 从接受到的 IP 包解析出 Rip 协议的数据
  * @param packet 接受到的 IP 包
@@ -83,12 +100,14 @@ bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output) {
     e.addr = packet[4] + (packet[5] << 8) + (packet[6] << 16) + (packet[7] << 24); // big
     // printf("ip addr: %.8x\n", rip_entry.addr);
     e.mask = packet[8] + (packet[9] << 8) + (packet[10] << 16) + (packet[11] << 24); // big
-    for (auto i = 8; i < 12; ++i) MAKE_SURE(packet[i] == 0xFF || packet[i] == 0x00);
+    uint32_t mask_little = endianSwap(e.mask);
+    MAKE_SURE(checkMask(mask_little));
     // MAKE_SURE(e.mask != 0xFFFFFFFF && e.mask != 0x00000000);
     e.nexthop = packet[12] + (packet[13] << 8) + (packet[14] << 16) + (packet[15] << 24); // big
     uint32_t metric_little = (packet[16] << 24) + (packet[17] << 16) + (packet[18] << 8) + packet[19]; // little
     MAKE_SURE((command == CMD_REQUEST && metric_little == 16) || (command == CMD_RESPONSE && 1 <= metric_little && metric_little <= 16));
     e.metric = packet[16] + (packet[17] << 8) + (packet[18] << 16) + (packet[19] << 24); // big
+    // printf("\033[32mass rpe ip: %u.%u.%u.%u\033[0m\n", (uint8_t)e.addr, (uint8_t)(e.addr>>8), (uint8_t)(e.addr>>16), (uint8_t)(e.addr>>24));
   }
   return true;
 }

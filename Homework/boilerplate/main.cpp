@@ -161,7 +161,7 @@ int main(int argc, char *argv[]) {
             resp.numEntries = std::min(entries_to_send, (uint32_t)RIP_MAX_ENTRY);
             resp.command = CMD_RESPONSE;
             for (int i = 0; i < resp.numEntries; ++i) {
-              resp.entries[i] = rtEntry2RipEntry(routing_table.at(idx_in_rt + i)); // TODO use [i]
+              resp.entries[i] = rtEntry2RipEntry(routing_table[idx_in_rt + i]); // TODO use [i]
             }
             // assemble rip packet
             uint32_t rip_len = assemble(&rip, &output[20 + 8]);
@@ -184,6 +184,7 @@ int main(int argc, char *argv[]) {
           bool did_update_rt = false;
           for (int i = 0; i < rip.numEntries; ++i) {
             const RipEntry &rpe = rip.entries[i];
+            // printf("\033[31mrpe ip: %u.%u.%u.%u\033[0m\n", (uint8_t)rpe.addr, (uint8_t)(rpe.addr>>8), (uint8_t)(rpe.addr>>16), (uint8_t)(rpe.addr>>24));
             uint8_t metric = (uint8_t)endianSwap(rpe.metric);
             if (metric + 1 > 16) {
               // deleting this route entry ?
