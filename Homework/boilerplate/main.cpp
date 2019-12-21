@@ -17,17 +17,18 @@ extern bool query(uint32_t addr, uint32_t *nexthop, uint32_t *if_index);
 extern bool forward(uint8_t *packet, size_t len);
 extern bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output);
 extern uint32_t assemble(const RipPacket *rip, uint8_t *buffer);
+extern uint32_t countTrailingOne(uint32_t a);
+extern uint32_t endianSwap(uint32_t a);
 extern std::vector<RoutingTableEntry>::iterator find(const RoutingTableEntry &entry);
 extern std::vector<RoutingTableEntry> routing_table;
 
 uint8_t packet[2048];
 uint8_t output[2048];
-// 0: 10.0.0.1  (-> R1)
-// 1: 10.0.1.1  (-> R3)
-// 2: 10.0.2.1  (not used)
-// 3: 10.0.3.1  (not used)
+
 // 你可以按需进行修改，注意端序
-in_addr_t addrs[N_IFACE_ON_BOARD] = {0x0203a8c0, 0x0104a8c0}; //, 0x0102000a, 0x0103000a};
+// 0: 192.168.3.2  (-> R1)
+// 1: 192.168.4.1  (-> R3)
+in_addr_t addrs[N_IFACE_ON_BOARD] = {0x0203a8c0, 0x0104a8c0};
 // 组播地址： 224.0.0.9
 const in_addr_t MULTICAST_ADDR = 0x90000e0;
 
@@ -119,7 +120,7 @@ int main(int argc, char *argv[]) {
     auto packet_len = res;
     // 1. 检查是否是合法的 IP 包，可以用你编写的 validateIPChecksum 函数，还需要一些额外的检查
     if (!validateIPChecksum(packet, packet_len)) {
-      printf("Invalid IP Checksum\n");
+      printf("\033[31mInvalid IP Checksum\033[0m\n");
       continue;
     }
     in_addr_t src_addr, dst_addr;
@@ -199,7 +200,6 @@ int main(int argc, char *argv[]) {
                 printf("protect direct routing\n");
                 continue; // protect direct routing
               }
-              // if (if_index != TODO
               auto rte = RipEntry2rtEntry(rpe);
               auto where = find(rte);
               if (where == routing_table.end()) {
@@ -232,10 +232,13 @@ int main(int argc, char *argv[]) {
               }
             } else {
               // insert
-              RoutingTableEntry rte = RipEntry2rtEntry(rpe);
-              rte.nexthop = src_addr;
-              rte.if_index = if_index;
-              rte.metric += 1;
+              RoutingTableEntry rte = {
+                .addr = rpe.addr,
+                .len = countTrailingOne(rpe.mask),
+                .if_index = (uint32_t)if_index,
+                .nexthop = src_addr,
+                .metric = (uint8_t)(endianSwap(rpe.metric) + 1u)
+              };
               auto where = find(rte);
               if (where == routing_table.end()) {
                 // not found, insert
@@ -248,7 +251,7 @@ int main(int argc, char *argv[]) {
                   did_update_rt = true;
                   *where = rte;
                   // wait until next periodical multicast
-                  // TODO: or incrementally multicast now
+                  // or incrementally multicast now
                 }
                 // else: no op
               }
@@ -300,7 +303,7 @@ int main(int argc, char *argv[]) {
         }
       } else {
         // TODO not found
-        // 如果没查到目的地址的路由，建议返回一个 ICMP Destination Network Unreachable；
+        // 如果没查到目的地址的路由，建议返回一个 ICMP Destination Network Unreachable
         printf("ICMP Destination Network Unreachable\n");
       } // query
 

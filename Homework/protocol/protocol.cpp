@@ -101,9 +101,10 @@ bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output) {
     // printf("ip addr: %.8x\n", rip_entry.addr);
     e.mask = packet[8] + (packet[9] << 8) + (packet[10] << 16) + (packet[11] << 24); // big
     uint32_t mask_little = endianSwap(e.mask);
-    MAKE_SURE(checkMask(mask_little));
-    // MAKE_SURE(e.mask != 0xFFFFFFFF && e.mask != 0x00000000);
+    MAKE_SURE(checkMask(mask_little)); // mask little should look like '1111000'
+    e.addr &= e.mask;
     e.nexthop = packet[12] + (packet[13] << 8) + (packet[14] << 16) + (packet[15] << 24); // big
+    e.nexthop &= e.mask;
     uint32_t metric_little = (packet[16] << 24) + (packet[17] << 16) + (packet[18] << 8) + packet[19]; // little
     MAKE_SURE((command == CMD_REQUEST && metric_little == 16) || (command == CMD_RESPONSE && 1 <= metric_little && metric_little <= 16));
     e.metric = packet[16] + (packet[17] << 8) + (packet[18] << 16) + (packet[19] << 24); // big

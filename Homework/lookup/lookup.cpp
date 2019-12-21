@@ -58,6 +58,15 @@ std::vector<RoutingTableEntry>::iterator find(const RoutingTableEntry &entry) {
   return std::find_if(routing_table.begin(), routing_table.end(), match);
 }
 
+template<typename T>
+static void showBits(T a)
+{
+	auto b = (T *) (&a);  // low bit at right
+	for (int k = 8 * sizeof(T) - 1; k >= 0; --k) {
+		printf("%u", (bool) (*b & (1 << k)));
+	}
+}
+
 /**
  * @brief 进行一次路由表的查询，按照最长前缀匹配原则
  * @param addr 需要查询的目标地址，大端序
@@ -70,11 +79,8 @@ bool query(uint32_t addr, uint32_t *nexthop, uint32_t *if_index) {
 
   auto rank = [addr](const RoutingTableEntry &entry) -> uint32_t { 
     // return the number of matching bits, (start with lowbit)
-    uint32_t mask = 1;
-    for (auto i = 0; i < entry.len; i++, mask <<= 1) {
-      if ((addr & mask) != (entry.addr & mask)) return 0; // match fail
-    }
-    return entry.len;
+    uint32_t mask = (uint32_t)(entry.len < 32u ? (1u << entry.len) - 1u : 0xffffffff); // look like 0x000fff
+    return (addr & mask) == (entry.addr & mask) ? entry.len : 0;
   };
 
   auto it = std::max_element(routing_table.begin(), routing_table.end(), 

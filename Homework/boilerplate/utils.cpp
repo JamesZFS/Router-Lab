@@ -32,7 +32,7 @@ RipEntry rtEntry2RipEntry(const RoutingTableEntry &e) {
   };
 }
 
-static uint32_t countTrailingOne(uint32_t a) {
+uint32_t countTrailingOne(uint32_t a) {
   uint32_t len;
   for (len = 0; len < 32; ++len) {
     if ((a & 0x01) == 0) {
