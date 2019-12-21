@@ -42,7 +42,7 @@ bool forward(uint8_t *packet, size_t len) {
   // get IP header length
   size_t h_len = (packet[0] & 0x0F) * 4;  // in byte
   // 1. check valsum
-  if (valSum(packet, h_len) != exp_sum) return false;
+  // if (valSum(packet, h_len) != exp_sum) return false;
   // 2. ttl -= 1
   packet[8] -= 1;
   // 3. update valsum
