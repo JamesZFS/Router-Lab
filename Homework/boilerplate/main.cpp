@@ -14,7 +14,8 @@ extern bool validateIPChecksum(uint8_t *packet, size_t len);
 extern uint16_t valSum(const uint8_t *packet, size_t len);
 extern void update(bool insert, RoutingTableEntry entry);
 extern bool query(uint32_t addr, uint32_t *nexthop, uint32_t *if_index);
-extern bool forward(uint8_t *packet, size_t len);
+// extern bool forward(uint8_t *packet, size_t len);
+bool forwardFast(uint8_t *packet, size_t len);
 extern bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output);
 extern uint32_t assemble(const RipPacket *rip, uint8_t *buffer);
 extern uint32_t countTrailingOne(uint32_t a);
@@ -26,9 +27,16 @@ uint8_t packet[2048];
 uint8_t output[2048];
 
 // 你可以按需进行修改，注意端序
+
+// R2:
 // 0: 192.168.3.2  (-> R1)
 // 1: 192.168.4.1  (-> R3)
 in_addr_t addrs[N_IFACE_ON_BOARD] = {0x0203a8c0, 0x0104a8c0};
+
+// R1:
+// 0: 192.168.3.1  (-> R2)
+// 1: 192.168.1.1  (-> PC1)
+// in_addr_t addrs[N_IFACE_ON_BOARD] = {0x0103a8c0, 0x0101a8c0};
 // 组播地址： 224.0.0.9
 const in_addr_t MULTICAST_ADDR = 0x90000e0;
 
@@ -127,7 +135,7 @@ int main(int argc, char *argv[]) {
     // extract src_addr and dst_addr from packet
     src_addr = packet[12] + (packet[13] << 8) + (packet[14] << 16) + (packet[15] << 24); // big
     dst_addr = packet[16] + (packet[17] << 8) + (packet[18] << 16) + (packet[19] << 24); // big
-    printf("\033[32mlearned an IP packet, src: %u.%u.%u.%u  dst: %u.%u.%u.%u\n\033[0m", 
+    printf("learned an IP packet, src: %u.%u.%u.%u  dst: %u.%u.%u.%u\n", 
           packet[12], packet[13], packet[14], packet[15], 
           packet[16], packet[17], packet[18], packet[19]);
 
@@ -211,7 +219,8 @@ int main(int argc, char *argv[]) {
                 printf("protect route entry for if_index not match\n");
                 continue;
               }
-              printf("deleting route entry\n");
+              printf("\033[32mdeleting route entry: \033[0m");
+              printf("%u.%u.%u.%u/%u \n", (uint8_t)rte.addr, (uint8_t)(rte.addr>>8), (uint8_t)(rte.addr>>16), (uint8_t)(rte.addr>>24), rte.len);
               did_update_rt = true;
               routing_table.erase(where);
               RipPacket resp; // construct expire packet
@@ -231,7 +240,7 @@ int main(int argc, char *argv[]) {
                 printf("expire packet sent to %d\n", out_if);
               }
             } else {
-              // insert
+              // insert / update?
               RoutingTableEntry rte = {
                 .addr = rpe.addr,
                 .len = countTrailingOne(rpe.mask),
@@ -243,12 +252,16 @@ int main(int argc, char *argv[]) {
               if (where == routing_table.end()) {
                 // not found, insert
                 did_update_rt = true;
+                printf("\033[32minserting route entry: \033[0m");
+                printf("%u.%u.%u.%u/%u \n", (uint8_t)rte.addr, (uint8_t)(rte.addr>>8), (uint8_t)(rte.addr>>16), (uint8_t)(rte.addr>>24), rte.len);
                 routing_table.push_back(rte);
               } else {
                 // found the same route
                 if (metric + 1 <= where->metric) {
                   // update
                   did_update_rt = true;
+                  printf("\033[32mupdating route entry: \033[0m");
+                  printf("%u.%u.%u.%u/%u \n", (uint8_t)rte.addr, (uint8_t)(rte.addr>>8), (uint8_t)(rte.addr>>16), (uint8_t)(rte.addr>>24), rte.len);
                   *where = rte;
                   // wait until next periodical multicast
                   // or incrementally multicast now
@@ -258,7 +271,7 @@ int main(int argc, char *argv[]) {
             }
           }
           if (did_update_rt) {
-            printf("\033[34mupdated routing table\n");
+            printf("\033[32mupdated routing table\n");
             printRoutingTable();
             printf("\033[0m");
           }
@@ -286,8 +299,8 @@ int main(int argc, char *argv[]) {
           // 在 TTL 减到 0 的时候建议构造一个 ICMP Time Exceeded 返回给发送者；
           memcpy(output, packet, packet_len);
           // update ttl and checksum
-          if (!forward(output, packet_len)) {
-            printf("forwarding checksum failed.");
+          if (!forwardFast(output, packet_len)) {
+            printf("forwarding checksum failed.\n");
             break;
           }
           if (packet[8] == 0) { // if ttl == 0
@@ -296,7 +309,7 @@ int main(int argc, char *argv[]) {
           } else {
             res = HAL_SendIPPacket(dest_if, output, packet_len, dest_mac);
             assert(res == 0);
-            printf("forwarded.");
+            printf("forwarded.\n");
           }
         } else {
           // 如果没查到下一跳的 MAC 地址，HAL 会自动发出 ARP 请求，在对方回复后，下次转发时就知道了
@@ -304,7 +317,7 @@ int main(int argc, char *argv[]) {
       } else {
         // TODO not found
         // 如果没查到目的地址的路由，建议返回一个 ICMP Destination Network Unreachable
-        printf("ICMP Destination Network Unreachable\n");
+        // printf("ICMP Destination Network Unreachable\n");
       } // query
 
     } // if dst_is_me

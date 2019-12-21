@@ -41,11 +41,12 @@ bool forward(uint8_t *packet, size_t len) {
   packet[11] = 0;
   // get IP header length
   size_t h_len = (packet[0] & 0x0F) * 4;  // in byte
-  // 1. check valsum
+  // 1. check valsum (not necessary actually)
   // if (valSum(packet, h_len) != exp_sum) return false;
   // 2. ttl -= 1
   packet[8] -= 1;
   // 3. update valsum
+  
   uint16_t val_sum = valSum(packet, h_len);
   // reinterpret_cast<uint16_t&>(packet[10]) = val_sum;
   packet[10] = val_sum >> 8;
