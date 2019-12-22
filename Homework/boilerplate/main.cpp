@@ -26,12 +26,16 @@ extern std::vector<RoutingTableEntry> routing_table;
 uint8_t packet[2048];
 uint8_t output[2048];
 
-// 你可以按需进行修改，注意端序
+// TODO: 你可以按需进行修改，注意端序
+// R3:
+// 0: 192.168.4.2  (-> R2)
+// 1: 192.168.5.2  (-> PC2)
+// in_addr_t addrs[N_IFACE_ON_BOARD] = {0x0204a8c0, 0x0205a8c0};
 
 // R2:
 // 0: 192.168.3.2  (-> R1)
 // 1: 192.168.4.1  (-> R3)
-in_addr_t addrs[N_IFACE_ON_BOARD] = {0x0203a8c0, 0x0104a8c0};
+// in_addr_t addrs[N_IFACE_ON_BOARD] = {0x0203a8c0, 0x0104a8c0};
 
 // R1:
 // 0: 192.168.3.1  (-> R2)
