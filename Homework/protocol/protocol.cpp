@@ -48,16 +48,7 @@ static void printPacket(const uint8_t *packet, uint32_t len) {
 #define MAKE_SURE(cond)  if (!(cond)) return false;
 
 static bool checkMask(uint32_t mask) {
-  uint32_t i = 0;
-  while (i < 32 && (mask & 1)) {
-    mask >>= 1;
-    i++;
-  }
-  while (i++ < 32) {
-    if (mask & 1) return false;
-    mask >>= 1;
-  }
-  return true;
+  return (mask | (mask - 1)) == 0xFFFFFFFF;
 }
 
 static uint32_t endianSwap(uint32_t a) {
@@ -101,7 +92,7 @@ bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output) {
     // printf("ip addr: %.8x\n", rip_entry.addr);
     e.mask = packet[8] + (packet[9] << 8) + (packet[10] << 16) + (packet[11] << 24); // big
     uint32_t mask_little = endianSwap(e.mask);
-    MAKE_SURE(checkMask(e.mask)); // mask should look like (low)'1111000'(high)
+    MAKE_SURE(checkMask(mask_little)); // mask should look like (low)'1111000'(high)
     e.addr &= e.mask;
     e.nexthop = packet[12] + (packet[13] << 8) + (packet[14] << 16) + (packet[15] << 24); // big
     e.nexthop &= e.mask;
