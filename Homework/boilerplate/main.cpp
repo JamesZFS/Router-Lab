@@ -94,13 +94,13 @@ int main(int argc, char *argv[]) {
           res = HAL_ArpGetMacAddress(if_index, MULTICAST_ADDR, multicast_mac);
           assert(res == 0);
           res = HAL_SendIPPacket(if_index, output, tot_len, multicast_mac);
-          printf("if_id = %u, res = %d, idx_in_rt = %d\n", if_index, res, idx_in_rt);
+          // printf("if_id = %u, res = %d, idx_in_rt = %d\n", if_index, res, idx_in_rt);
           assert(res == 0);
           
           idx_in_rt += entries_to_send;
         } while (idx_in_rt < routing_table.size()); // possibly send multiple times
       } // for if_index
-      printf("multicast done.\n");
+      // printf("multicast done.\n");
       printRoutingTable();
     }
 
@@ -135,9 +135,9 @@ int main(int argc, char *argv[]) {
     // extract src_addr and dst_addr from packet
     src_addr = packet[12] + (packet[13] << 8) + (packet[14] << 16) + (packet[15] << 24); // big
     dst_addr = packet[16] + (packet[17] << 8) + (packet[18] << 16) + (packet[19] << 24); // big
-    printf("learned an IP packet, src: %u.%u.%u.%u  dst: %u.%u.%u.%u\n", 
-          packet[12], packet[13], packet[14], packet[15], 
-          packet[16], packet[17], packet[18], packet[19]);
+    // printf("learned an IP packet, src: %u.%u.%u.%u  dst: %u.%u.%u.%u\n", 
+    //       packet[12], packet[13], packet[14], packet[15], 
+    //       packet[16], packet[17], packet[18], packet[19]);
 
     // 2. 检查目的地址，如果是路由器自己的 IP（或者是 RIP 的组播地址），进入 3a；否则进入 3b
     bool dst_is_me = false;
@@ -149,12 +149,12 @@ int main(int argc, char *argv[]) {
     }
     // Handle rip multicast address?
     if (dst_addr == MULTICAST_ADDR) {
-      printf("received multicast!\n");
+      // printf("received multicast!\n");
       dst_is_me = true;
     }
 
     if (dst_is_me) { // 3a
-      printf("dst is me\n");
+      // printf("dst is me\n");
       RipPacket rip;
       // is this packet a RIP?
       if (disassemble(packet, packet_len, &rip)) {
@@ -189,7 +189,7 @@ int main(int argc, char *argv[]) {
           //      再把 IP 和 UDP 头补充在前面，通过 HAL_SendIPPacket 把它发到别的网口上
           // use query and update
 
-          printf("got response packet\n");
+          // printf("got response packet\n");
           bool did_update_rt = false;
           for (int i = 0; i < rip.numEntries; ++i) {
             const RipEntry &rpe = rip.entries[i];
@@ -205,22 +205,22 @@ int main(int argc, char *argv[]) {
                 }
               }
               if (is_direct) {
-                printf("protect direct routing\n");
+                // printf("protect direct routing\n");
                 continue; // protect direct routing
               }
               auto rte = RipEntry2rtEntry(rpe);
               auto where = find(rte);
               if (where == routing_table.end()) {
-                printf("Fail to delete in routing table, the entry is not found.");
-                printf("ip: %u.%u.%u.%u/%u \n", (uint8_t)rte.addr, (uint8_t)(rte.addr>>8), (uint8_t)(rte.addr>>16), (uint8_t)(rte.addr>>24), rte.len);
+                // printf("Fail to delete in routing table, the entry is not found.");
+                // printf("ip: %u.%u.%u.%u/%u \n", (uint8_t)rte.addr, (uint8_t)(rte.addr>>8), (uint8_t)(rte.addr>>16), (uint8_t)(rte.addr>>24), rte.len);
                 continue;
               }
               if (where->if_index != if_index) {
-                printf("protect route entry for if_index not match\n");
+                // printf("protect route entry for if_index not match\n");
                 continue;
               }
-              printf("\033[32mdeleting route entry: \033[0m");
-              printf("%u.%u.%u.%u/%u \n", (uint8_t)rte.addr, (uint8_t)(rte.addr>>8), (uint8_t)(rte.addr>>16), (uint8_t)(rte.addr>>24), rte.len);
+              // printf("\033[32mdeleting route entry: \033[0m");
+              // printf("%u.%u.%u.%u/%u \n", (uint8_t)rte.addr, (uint8_t)(rte.addr>>8), (uint8_t)(rte.addr>>16), (uint8_t)(rte.addr>>24), rte.len);
               did_update_rt = true;
               routing_table.erase(where);
               RipPacket resp; // construct expire packet
@@ -229,16 +229,16 @@ int main(int argc, char *argv[]) {
               resp.entries[0] = rpe;
               auto rip_len = assemble(&resp, &output[20 + 8]);
               // multicast expire packet to all if except in_if
-              for (int out_if = 0; out_if < N_IFACE_ON_BOARD; ++out_if) {
-                if (out_if == if_index) continue; // avoid sending back
-                auto tot_len = writeIpUdpHead(output, rip_len, addrs[out_if], MULTICAST_ADDR);
-                macaddr_t multicast_mac;
-                res = HAL_ArpGetMacAddress(out_if, MULTICAST_ADDR, multicast_mac);
-                assert(res == 0);
-                res = HAL_SendIPPacket(out_if, output, tot_len, multicast_mac);
-                assert(res == 0);
-                printf("expire packet sent to %d\n", out_if);
-              }
+              // for (int out_if = 0; out_if < N_IFACE_ON_BOARD; ++out_if) {
+              //   if (out_if == if_index) continue; // avoid sending back
+              //   auto tot_len = writeIpUdpHead(output, rip_len, addrs[out_if], MULTICAST_ADDR);
+              //   macaddr_t multicast_mac;
+              //   res = HAL_ArpGetMacAddress(out_if, MULTICAST_ADDR, multicast_mac);
+              //   assert(res == 0);
+              //   res = HAL_SendIPPacket(out_if, output, tot_len, multicast_mac);
+              //   assert(res == 0);
+              //   printf("expire packet sent to %d\n", out_if);
+              // }
             } else {
               // insert / update?
               RoutingTableEntry rte = {
@@ -252,16 +252,16 @@ int main(int argc, char *argv[]) {
               if (where == routing_table.end()) {
                 // not found, insert
                 did_update_rt = true;
-                printf("\033[32minserting route entry: \033[0m");
-                printf("%u.%u.%u.%u/%u \n", (uint8_t)rte.addr, (uint8_t)(rte.addr>>8), (uint8_t)(rte.addr>>16), (uint8_t)(rte.addr>>24), rte.len);
+                // printf("\033[32minserting route entry: \033[0m");
+                // printf("%u.%u.%u.%u/%u \n", (uint8_t)rte.addr, (uint8_t)(rte.addr>>8), (uint8_t)(rte.addr>>16), (uint8_t)(rte.addr>>24), rte.len);
                 routing_table.push_back(rte);
               } else {
                 // found the same route
                 if (metric + 1 <= where->metric) {
                   // update
                   did_update_rt = true;
-                  printf("\033[32mupdating route entry: \033[0m");
-                  printf("%u.%u.%u.%u/%u \n", (uint8_t)rte.addr, (uint8_t)(rte.addr>>8), (uint8_t)(rte.addr>>16), (uint8_t)(rte.addr>>24), rte.len);
+                  // printf("\033[32mupdating route entry: \033[0m");
+                  // printf("%u.%u.%u.%u/%u \n", (uint8_t)rte.addr, (uint8_t)(rte.addr>>8), (uint8_t)(rte.addr>>16), (uint8_t)(rte.addr>>24), rte.len);
                   *where = rte;
                   // wait until next periodical multicast
                   // or incrementally multicast now
@@ -270,17 +270,17 @@ int main(int argc, char *argv[]) {
               }
             }
           }
-          if (did_update_rt) {
-            printf("\033[32mupdated routing table\n");
-            printRoutingTable();
-            printf("\033[0m");
-          }
+          // if (did_update_rt) {
+          //   printf("\033[32mupdated routing table\n");
+          //   printRoutingTable();
+          //   printf("\033[0m");
+          // }
         }
       } else { // if not a valid rip, ignore
-        printf("not a valid rip\n");
+        // printf("not a valid rip\n");
       }
     } else {
-      printf("forwarding\n");
+      // printf("forwarding\n");
       // 3b.1 此时目的 IP 地址不是路由器本身，则调用你编写的 query 函数查询，
       //      如果查到目的地址，如果是直连路由， nexthop 改为目的 IP 地址，
       //      用 HAL_ArpGetMacAddress 获取 nexthop 的 MAC 地址，
@@ -305,11 +305,11 @@ int main(int argc, char *argv[]) {
           }
           if (packet[8] == 0) { // if ttl == 0
             // TODO: send a ICMP Time Exceeded to sender
-            printf("ICMP TllE\n");
+            // printf("ICMP TllE\n");
           } else {
             res = HAL_SendIPPacket(dest_if, output, packet_len, dest_mac);
             assert(res == 0);
-            printf("forwarded.\n");
+            // printf("forwarded.\n");
           }
         } else {
           // 如果没查到下一跳的 MAC 地址，HAL 会自动发出 ARP 请求，在对方回复后，下次转发时就知道了
