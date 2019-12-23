@@ -18,7 +18,6 @@ extern bool query(uint32_t addr, uint32_t *nexthop, uint32_t *if_index);
 bool forwardFast(uint8_t *packet, size_t len);
 extern bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output);
 extern uint32_t assemble(const RipPacket *rip, uint8_t *buffer);
-extern uint32_t countTrailingOne(uint32_t a);
 extern uint32_t endianSwap(uint32_t a);
 extern std::vector<RoutingTableEntry>::iterator find(const RoutingTableEntry &entry);
 extern std::vector<RoutingTableEntry> routing_table;
@@ -40,7 +39,7 @@ uint8_t output[2048];
 // R1:
 // 0: 192.168.3.1  (-> R2)
 // 1: 192.168.1.1  (-> PC1)
-// in_addr_t addrs[N_IFACE_ON_BOARD] = {0x0103a8c0, 0x0101a8c0};
+in_addr_t addrs[N_IFACE_ON_BOARD] = {0x0103a8c0, 0x0101a8c0};
 // 组播地址： 224.0.0.9
 const in_addr_t MULTICAST_ADDR = 0x90000e0;
 
@@ -121,7 +120,7 @@ int main(int argc, char *argv[]) {
       printf("listen: error\n");
       return res;
     } else if (res == 0) {
-      printf("listen: timeout\n");
+      // printf("listen: timeout\n");
       continue;
     } else if (res > sizeof(packet)) {
       // packet is truncated, ignore it
@@ -247,7 +246,7 @@ int main(int argc, char *argv[]) {
               // insert / update?
               RoutingTableEntry rte = {
                 .addr = rpe.addr,
-                .len = countTrailingOne(rpe.mask),
+                .len = maskToLen(rpe.mask),
                 .if_index = (uint32_t)if_index,
                 .nexthop = src_addr,
                 .metric = (uint8_t)(endianSwap(rpe.metric) + 1u)

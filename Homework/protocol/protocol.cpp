@@ -4,20 +4,6 @@
 #include <cstdio>
 #include <cstring>
 
-static void printByte(uint8_t a)
-{
-	auto b = (uint8_t *) (&a);  // low bit at right
-	for (int k = 7; k >= 0; --k) {
-		printf("%u", (bool) (*b & (1 << k)));
-	}
-}
-
-static void printPacket(const uint8_t *packet, uint32_t len) {
-  for (int i = 0; i < len; ++i)
-    printf("%.2x ", packet[i]);
-  printf("\n");
-}
-
 /*
   在头文件 rip.h 中定义了如下的结构体：
   #define RIP_MAX_ENTRY 25
@@ -47,12 +33,13 @@ static void printPacket(const uint8_t *packet, uint32_t len) {
 
 #define MAKE_SURE(cond)  if (!(cond)) return false;
 
-static bool checkMask(uint32_t mask) {
-  return (mask | (mask - 1)) == 0xFFFFFFFF;
-}
-
 static uint32_t endianSwap(uint32_t a) {
   return (a >> 24) | ((a & 0x00FF0000) >> 8) | ((a & 0x0000FF00) << 8) | ((a & 0x000000FF) << 24);
+}
+
+static bool checkRipMask(uint32_t mask) {
+  uint32_t mask_little = endianSwap(mask);
+  return (mask_little | (mask_little - 1)) == 0xFFFFFFFF;
 }
 
 /**
@@ -91,8 +78,7 @@ bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output) {
     e.addr = packet[4] + (packet[5] << 8) + (packet[6] << 16) + (packet[7] << 24); // big
     // printf("ip addr: %.8x\n", rip_entry.addr);
     e.mask = packet[8] + (packet[9] << 8) + (packet[10] << 16) + (packet[11] << 24); // big
-    uint32_t mask_little = endianSwap(e.mask);
-    MAKE_SURE(checkMask(mask_little)); // mask should look like (low)'1111000'(high)
+    MAKE_SURE(checkRipMask(e.mask)); // mask should look like (low)'1111000'(high)
     e.addr &= e.mask;
     e.nexthop = packet[12] + (packet[13] << 8) + (packet[14] << 16) + (packet[15] << 24); // big
     e.nexthop &= e.mask;
