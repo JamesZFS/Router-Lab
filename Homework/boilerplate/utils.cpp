@@ -26,10 +26,14 @@ static uint16_t valSum(const uint8_t *packet, size_t len) {
 RipEntry rtEntry2RipEntry(const RoutingTableEntry &e) {
   return RipEntry{
     .addr = e.addr,
-    .mask = (0x1u << e.len) - 1u, // caution!
+    .mask = lenToMask(e.len), // caution!
     .nexthop = e.nexthop,
     .metric = endianSwap(e.metric)
   };
+}
+
+uint32_t lenToMask(uint32_t len) {
+  return endianSwap((0xFFFFFFFF >> (32 - len)) << (32 - len));
 }
 
 uint32_t maskToLen(uint32_t mask) {

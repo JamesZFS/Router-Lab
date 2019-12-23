@@ -71,6 +71,10 @@ inline static uint32_t endianSwap(uint32_t a) {
   return (a >> 24) | ((a & 0x00FF0000) >> 8) | ((a & 0x0000FF00) << 8) | ((a & 0x000000FF) << 24);
 }
 
+inline static uint32_t lenToMask(uint32_t len) {
+  return endianSwap((0xFFFFFFFF >> (32 - len)) << (32 - len));
+}
+
 /**
  * @brief 进行一次路由表的查询，按照最长前缀匹配原则
  * @param addr 需要查询的目标地址，大端序
@@ -83,8 +87,8 @@ bool query(uint32_t addr, uint32_t *nexthop, uint32_t *if_index) {
 
   auto rank = [addr](const RoutingTableEntry &entry) -> uint32_t { 
     // return the number of matching bits, (start with lowbit)
-    uint32_t mask = (uint32_t)(entry.len < 32u ? endianSwap((1u << entry.len) - 1u) : 0xffffffff); // look like 0x000fff
-    return (endianSwap(addr) & mask) == (endianSwap(entry.addr) & mask) ? entry.len : 0;
+    uint32_t mask = lenToMask(entry.len);
+    return (addr & mask) == (entry.addr & mask) ? entry.len : 0;
   };
 
   auto it = std::max_element(routing_table.begin(), routing_table.end(), 
