@@ -32,21 +32,21 @@ RipEntry rtEntry2RipEntry(const RoutingTableEntry &e) {
   };
 }
 
-uint32_t countTrailingOne(uint32_t a) {
+uint32_t countLeadingOne(uint32_t a) {
   uint32_t len;
   for (len = 0; len < 32; ++len) {
-    if ((a & 0x01) == 0) {
+    if ((a & 0x01) == 1) { // count trailing zero
       break;
     }
     a >>= 1;
   }
-  return len;
+  return 32 - len;
 }
 
 RoutingTableEntry RipEntry2rtEntry(const RipEntry &e) {
   return RoutingTableEntry{
     .addr = e.addr,
-    .len = countTrailingOne(e.mask),
+    .len = countLeadingOne(endianSwap(e.mask)),
     .if_index = 0,  // uninitialized
     .nexthop = e.nexthop,
     .metric = (uint8_t)endianSwap(e.metric)
